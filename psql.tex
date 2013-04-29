@@ -1,0 +1,163 @@
+\documentclass[10pt]{beamer}
+\usetheme{Singapore}
+\usepackage{xunicode}
+\usepackage{xecyr}
+\usecolortheme{beaver}
+\usepackage{fontspec}
+\usepackage{tikz}
+\usetikzlibrary{arrows,chains,matrix,positioning,scopes}
+\setsansfont{FreeSans}
+\setmonofont{DejaVuSansMono}
+\usepackage[russian]{babel}
+
+\tikzstyle{block} = [draw, fill=blue!20, rectangle, 
+    minimum height=3em, minimum width=3em]
+\tikzstyle{highlightblock} = [draw, fill=red!10, rectangle, 
+    minimum height=3em, minimum width=3em]
+\tikzstyle{input} = [coordinate]
+\tikzstyle{output} = [coordinate]
+\tikzstyle{pinstyle} = [pin edge={to-,thin,black}]
+\tikzstyle{vecArrow} = [thick]
+
+\title{Транзакции, SQL и PostgreSQL}
+\author{Александр Неганов}
+\date{\today}
+\institute{Selectel}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\frame{
+  \frametitle{Транзакции}
+
+  Что такое транзакция?
+
+  \begin{itemize}
+    \item<2-> Версия состояния базы данных
+    \item<3-> Все или ничего
+    \item<4-> Изоляция
+  \end{itemize}
+}
+
+\frame{
+  \frametitle{Изоляция транзакций}
+  
+  ``Феномены`` (проблемы) которые могут возникнуть:
+
+  \begin{itemize}
+    \item<2> Потерянное обновление (lost update)
+    \item<3-> Потерянное обновление (lost update) - в SQL стандартах
+      такого не бывает
+    \item<4-> Грязное чтение (dirty read)
+    \item<5-> Неповторяющееся чтение (non-repeatable read)
+    \item<6-> Фантомное чтение/фантомная вставка (phantom read)
+  \end{itemize}
+}
+
+\frame{
+  \frametitle{Уровни изоляции транзакций}
+
+  Стандарт SQL определяет четыре уровня изоляции транзакций:
+
+  \begin{itemize}
+    \item<2-> \texttt{READ UNCOMMITTED} (dirty read, non-repeatable read,
+      phantom read)
+    \item<3-> \texttt{READ COMMITTED} (non-repeatable read, phantom read)
+    \item<4-> \texttt{REPEATABLE READ} (phantom read)
+    \item<5-> \texttt{SERIALIZABLE} - никакие эффекты невозможны, параллельное
+      выполнение - то же самое что и последовательное.
+  \end{itemize}
+ 
+}
+
+\frame{
+  \frametitle{Транзакции, как их понимает PostgreSQL 9.1}
+
+  \begin{itemize}
+    \item<2-> Транзакции могут видеть данные только подтвержденных (committed) транзакций ...
+    \item<3-> ... \texttt{READ UNCOMMITTED} то же что и \texttt{READ COMMITTED}
+    \item<4-> ... Фантомное чтение само по себе невозможно
+    \item<5-> \texttt{UPDATE} / \texttt{DELETE} лочит изменяемые строки до окончания транзакции
+    \item<6-> ... что может привести к dead lock'ам
+    \item<7-> ... которые хорошо определяются
+    \item<8-> Ошибка сериализации (40001)
+    \item<9-> \texttt{REPEATABLE READ} - ``слепок`` состояния БД на начало транзакции + ошибки сериализации
+    \item<10-> \texttt{SERIALIZABLE} - проверка зависимостей данных, ошибки сериализации
+  \end{itemize}
+
+}
+
+\frame{
+  \frametitle{READ COMMITTED / READ UNCOMMITTED}
+
+  Caмый слабый уровень изоляции транзакций
+
+  \begin{itemize}
+    \item<2-> Уровень изоляции по-умолчанию
+    \item<3-> Каждый запрос видит состояние БД на момент начала запроса.
+    \item<4-> \texttt{UPDATE} / \texttt{DELETE} лочит строки, удовлетворяющие \texttt{WHERE},
+      перепроверяет и изменяет.
+    \item<5-> Могут возникать странные, очень странные эффекты.
+  \end{itemize}
+
+}
+
+\frame{
+  \frametitle{REPEATABLE READ}
+
+  \begin{itemize}
+    \item<2-> ``Слепок`` состояния БД на начало транзакции
+    \item<3-> \texttt{UPDATE} / \texttt{DELETE} пытается лочить строки, удовлетворяющие WHERE, и, возможно, выкидывает ошибку сериализации
+    \item<4-> ... к которой нужно быть готовым
+    \item<5-> До 9.1 выбирался при указании \texttt{SERIALIZABLE}
+  \end{itemize}
+
+
+}
+\frame{
+  \frametitle{SERIALIZABLE}
+
+  Самый строгий уровень изоляции транзакций
+
+  \begin{itemize}
+    \item<2-> ``Слепок`` состояния БД на начало транзакции
+    \item<3-> Проверка зависимостей по данным между транзакциями, ошибка сериализации
+    \item<4-> Не добавляет больше локов чем \texttt{REPEATABLE READ}
+    \item<5-> ... но разумеется, есть overhead
+    \item<6-> Sequental scan затрагивает все строки -> больше ошибок сериализации
+    \item<7-> ... но зато строго повторяемый результат
+    \item<8-> ... но пока нет поддержки для Hot Standby
+  \end{itemize}
+
+}
+
+\frame{
+  \frametitle{Транзакции: выводы}
+
+  \begin{itemize}
+    \item<2-> Простые транзакции - \texttt{READ COMMITTED}, но с осторожностью
+    \item<3-> Отсутствие зависимостей по данным - \texttt{REPEATABLE READ}
+    \item<4-> Надежно, но без Hot standby и можно медленно - \texttt{SERIALIZABLE}
+  \end{itemize}
+}
+
+\frame{
+  \frametitle{SQL}
+
+  Создан в 1974, последняя ревизия стандарта - 2011 год.
+
+  \begin{itemize}
+    \item<2-> Стандарт не является полностью свободно/бесплатно доступным.
+    \item<3-> Стандарт не покрывает всех нужд, существуют свои расширения
+    \item<4-> ... тем не менее, поддержка XML там есть.
+    \item<5-> Отличающиеся реализации стандарта разными СУБД
+    \item<6-> \texttt{NULL}, \texttt{IS NULL}, constraints, аргумент функций
+    \item<7-> Один из самых понятных DSL, по мнению независимых экспертов
+  \end{itemize}
+}
+
+\frame{
+  \frametitle{Вопросы?}
+}
+\end{document}
